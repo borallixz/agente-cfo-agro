@@ -3,7 +3,8 @@ import pandas as pd
 import streamlit as st
 from calculos import (kg_semente_ha, sementes_por_metro, custo_semente_ha,
                       custo_total_ha, receita_por_ha, margem_por_ha,
-                      custo_por_saca, ponto_equilibrio, folga_sobre_equilibrio)
+                      custo_por_saca, ponto_equilibrio, folga_sobre_equilibrio,
+                      validar_numero, retorno_sobre_custo, MAX_RESULTADO)
 from estilo import CSS
 
 st.set_page_config(page_title="Agente CFO do Agro", page_icon="🌱", layout="wide")
@@ -27,14 +28,14 @@ def kpi(label, value, sub="", icone="ic-coin"):
 with st.sidebar:
     st.header("🚜 Dados da lavoura")
     cultivar = st.text_input("Cultivar", value="Cultivar exemplo")
-    area = st.number_input("Área (ha)", value=100.0, min_value=1.0, step=10.0)
+    area = st.number_input("Área (ha)", value=100.0, step=10.0)
 
     with st.expander("🌱 Semente", expanded=True):
         populacao = st.number_input("População (plantas/ha)", value=260000.0, step=5000.0, format="%.0f")
         pms = st.number_input("Peso de mil sementes (g)", value=150.0, step=1.0)
         espacamento = st.number_input("Espaçamento (m)", value=0.45, step=0.05)
-        germinacao = st.number_input("Germinação (%)", value=92.1, min_value=1.0, max_value=100.0, step=0.1)
-        emergencia = st.number_input("Emergência em campo (%)", value=100.0, min_value=1.0, max_value=100.0, step=1.0)
+        germinacao = st.number_input("Germinação (%)", value=92.1, step=0.1)
+        emergencia = st.number_input("Emergência em campo (%)", value=100.0, step=1.0)
         preco_saco = st.number_input("Preço do saco de 40 kg (R$)", value=280.0, step=10.0)
 
     with st.expander("💰 Custos", expanded=True):
@@ -42,20 +43,31 @@ with st.sidebar:
         outros = st.number_input("Outros custos, sem semente (R$/ha)", value=4000.0, step=100.0)
 
     with st.expander("🌾 Receita", expanded=True):
-        produtividade = st.number_input("Produtividade esperada (sc/ha)", value=60.0, min_value=1.0, step=1.0)
-        preco_saca = st.number_input("Preço da saca de soja (R$)", value=120.0, min_value=1.0, step=1.0)
+        produtividade = st.number_input("Produtividade esperada (sc/ha)", value=60.0, step=1.0)
+        preco_saca = st.number_input("Preço da saca de soja (R$)", value=120.0, step=1.0)
 
 # ---------- cálculos ----------
-kg = kg_semente_ha(populacao, pms, germinacao, emergencia)
-spm = sementes_por_metro(populacao, espacamento, germinacao, emergencia)
-semente = custo_semente_ha(kg, preco_saco)
-custo = custo_total_ha(outros, semente, royalties)
-receita = receita_por_ha(produtividade, preco_saca)
-margem = margem_por_ha(receita, custo)
-pe = ponto_equilibrio(custo, preco_saca)
-folga = folga_sobre_equilibrio(produtividade, pe)
-preco_minimo = custo_por_saca(custo, produtividade)
-margem_pct = margem / custo * 100
+try:
+    validar_numero(area, "Área", positivo=True)
+    kg = kg_semente_ha(populacao, pms, germinacao, emergencia)
+    spm = sementes_por_metro(populacao, espacamento, germinacao, emergencia)
+    semente = custo_semente_ha(kg, preco_saco)
+    custo = custo_total_ha(outros, semente, royalties)
+    receita = receita_por_ha(produtividade, preco_saca)
+    margem = margem_por_ha(receita, custo)
+    pe = ponto_equilibrio(custo, preco_saca)
+    folga = folga_sobre_equilibrio(produtividade, pe)
+    preco_minimo = custo_por_saca(custo, produtividade)
+    margem_pct = retorno_sobre_custo(receita, custo)
+
+    totais = (custo * area, receita * area, margem * area)
+    for total in totais:
+        validar_numero(abs(total), "Total da área", minimo=0, maximo=MAX_RESULTADO)
+    # Valide também os resultados usados no gráfico antes de apresentar o veredito.
+    margens_precos = [margem_por_ha(receita_por_ha(produtividade, p), custo) for p in range(60, 161, 5)]
+except (ValueError, OverflowError, ZeroDivisionError) as erro:
+    st.error(f"Não foi possível calcular o cenário: {erro}")
+    st.stop()
 
 # ---------- cabeçalho ----------
 st.markdown(
@@ -64,7 +76,14 @@ st.markdown(
     unsafe_allow_html=True)
 
 # ---------- veredito ----------
-if folga < 0:
+if folga is None:
+    if margem < 0:
+        cor, fundo, titulo = "#E57373", "#3A1D1D", "Não vale a pena"
+        texto = "A receita é inferior ao custo informado."
+    else:
+        cor, fundo, titulo = "#F4B942", "#3A2F14", "Sem veredito pela folga"
+        texto = "A folga não é definida com produtividade zero ou preço zero. Consulte o resultado monetário."
+elif folga < 0:
     cor, fundo, titulo = "#E57373", "#3A1D1D", "Não vale a pena"
     texto = f"O ponto de equilíbrio ({num(pe)} sc/ha) está acima da produtividade esperada ({num(produtividade, 0)} sc/ha)."
 elif folga < 15:
@@ -78,15 +97,24 @@ st.markdown(
     f'<div class="verdict" style="background:{fundo}; border:1px solid {cor};">'
     f'<h3 style="color:{cor};">{titulo}</h3><p>{texto}</p></div>',
     unsafe_allow_html=True)
-st.progress(min(max(folga, 0), 100) / 100, text=f"Folga sobre o ponto de equilíbrio: {num(folga, 0)}%")
+if folga is not None:
+    st.progress(min(max(folga, 0), 100) / 100, text=f"Folga sobre o ponto de equilíbrio: {num(folga, 0)}%")
+else:
+    st.info("Folga indefinida: requer produtividade e preço maiores que zero.")
+if margem_pct is None:
+    st.info("Retorno percentual sobre custo indefinido: o custo total é zero.")
+if preco_minimo is None:
+    st.info("Custo por saca indefinido: não há produção para distribuir o custo.")
+if pe is None:
+    st.info("Ponto de equilíbrio indefinido: com preço zero e custo positivo não há equilíbrio finito; com custo zero, a divisão 0/0 não define um ponto único.")
 
 # ---------- indicadores por hectare ----------
 st.subheader("Por hectare")
 k1, k2, k3, k4 = st.columns(4)
 k1.markdown(kpi("Custo total", brl(custo), f"Semente: {num(kg)} kg/ha", "ic-coin"), unsafe_allow_html=True)
-k2.markdown(kpi("Margem", brl(margem), f"{num(margem_pct, 0)}% sobre o custo", "ic-chart"), unsafe_allow_html=True)
-k3.markdown(kpi("Custo por saca", brl(preco_minimo), "Preço mínimo para não ter prejuízo", "ic-pod"), unsafe_allow_html=True)
-k4.markdown(kpi("Ponto de equilíbrio", f"{num(pe)} sc/ha", f"{num(spm)} sementes por metro", "ic-scale"), unsafe_allow_html=True)
+k2.markdown(kpi("Margem", brl(margem), (f"{num(margem_pct, 0)}% sobre o custo" if margem_pct is not None else "Retorno sobre custo indefinido"), "ic-chart"), unsafe_allow_html=True)
+k3.markdown(kpi("Custo por saca", (brl(preco_minimo) if preco_minimo is not None else "Indefinido"), "Preço mínimo para não ter prejuízo", "ic-pod"), unsafe_allow_html=True)
+k4.markdown(kpi("Ponto de equilíbrio", (f"{num(pe)} sc/ha" if pe is not None else "Indefinido"), f"{num(spm)} sementes por metro", "ic-scale"), unsafe_allow_html=True)
 
 # ---------- totais da área ----------
 st.subheader(f"Na área inteira ({num(area, 0)} ha)")
@@ -109,13 +137,16 @@ with g1:
                         legend=alt.Legend(orient="bottom", title=None)),
         tooltip=["Item", alt.Tooltip("Valor:Q", format=",.2f")],
     ).properties(height=320)
-    st.altair_chart(rosca)
+    if custo > 0:
+        st.altair_chart(rosca)
+    else:
+        st.info("Custo total zero: não há parcelas para representar no gráfico.")
 
 with g2:
     st.subheader("Margem conforme o preço da saca")
     precos = list(range(60, 161, 5))
     df_sens = pd.DataFrame({"Preco": precos,
-                            "Margem": [produtividade * p - custo for p in precos]})
+                            "Margem": margens_precos})
     linha = alt.Chart(df_sens).mark_line(color="#4CAF50", strokeWidth=3).encode(
         x=alt.X("Preco:Q", title="Preço da saca (R$)"),
         y=alt.Y("Margem:Q", title="Margem (R$/ha)"))
@@ -124,7 +155,8 @@ with g2:
     atual = alt.Chart(pd.DataFrame({"Preco": [preco_saca], "Margem": [margem]})).mark_point(
         size=140, filled=True, color="#F4B942").encode(x="Preco:Q", y="Margem:Q")
     st.altair_chart((linha + zero + atual).properties(height=320))
-    st.caption(f"Abaixo de {brl(preco_minimo)} por saca há prejuízo. O ponto amarelo é o preço atual.")
+    if preco_minimo is not None:
+        st.caption(f"Abaixo de {brl(preco_minimo)} por saca há prejuízo. O ponto amarelo é o preço atual.")
 
 # ---------- transparência ----------
 with st.expander("Como o cálculo é feito"):
