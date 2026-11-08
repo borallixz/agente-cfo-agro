@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import altair as alt
 import pandas as pd
 import streamlit as st
@@ -34,6 +37,22 @@ st.markdown("""
 
 VERDE, AMARELO, VERMELHO = "#4CAF50", "#E0B040", "#E05A5A"
 MARGEM_SEGURANCA = 15  # % — valor de exemplo, ajustar depois com dados reais
+
+
+def _carregar_referencia():
+    try:
+        return json.loads((Path(__file__).parent / "custos_referencia.json").read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+REF = _carregar_referencia()
+
+
+def ref(chave, padrao):
+    """Valor de referência do arquivo custos_referencia.json (ou o padrão, se faltar)."""
+    item = REF.get(chave)
+    return float(item["valor"]) if isinstance(item, dict) and "valor" in item else padrao
 
 
 def reais(v):
@@ -85,51 +104,60 @@ with sb.expander("🌱 Semente", expanded=False):
     germ = st.number_input("Germinação (%)", 40.0, 100.0, 85.0)
     emerg = st.number_input("Emergência em campo (%)", 40.0, 100.0, 85.0)
     esp = st.number_input("Espaçamento entre linhas (m)", 0.2, 1.0, 0.5)
-    preco_saco = st.number_input("Preço do saco de 40 kg (R$)", 0.0, value=480.0, step=10.0)
+    preco_saco = st.number_input("Preço do saco de 40 kg (R$)", 0.0, value=ref("preco_saco_semente", 480.0), step=10.0)
     royalties = st.number_input("Royalties / tecnologia (R$/ha)", 0.0, value=0.0, step=5.0)
     kg_ha = c.kg_semente_ha(pop, pms, germ, emerg)
     custo_sem = c.custo_semente_ha(kg_ha, preco_saco) + royalties
     st.caption(f"{num(kg_ha)} kg/ha · {num(c.sementes_por_metro(pop, esp, germ, emerg))} sementes/m")
 
 with sb.expander("🧪 Adubo", expanded=False):
-    n_fert = st.number_input("Quantidade de adubo (kg/ha)", 0.0, value=350.0, step=10.0)
-    preco_t = st.number_input("Preço do adubo (R$/tonelada)", 0.0, value=3200.0, step=100.0)
+    n_fert = st.number_input("Quantidade de adubo (kg/ha)", 0.0, value=ref("adubo_kg_ha", 350.0), step=10.0)
+    preco_t = st.number_input("Preço do adubo (R$/tonelada)", 0.0, value=ref("adubo_preco_t", 3200.0), step=100.0)
     calcario = st.number_input("Calcário / gesso (R$/ha)", 0.0, value=0.0, step=10.0)
     custo_adubo = c.custo_adubo_ha(n_fert, preco_t) + calcario
 
 with sb.expander("🛡️ Defensivos", expanded=False):
-    herb = st.number_input("Herbicidas (R$/ha)", 0.0, value=180.0, step=10.0)
-    inset = st.number_input("Inseticidas (R$/ha)", 0.0, value=120.0, step=10.0)
-    fung = st.number_input("Fungicidas (R$/ha)", 0.0, value=300.0, step=10.0)
+    herb = st.number_input("Herbicidas (R$/ha)", 0.0, value=ref("herbicida", 180.0), step=10.0)
+    inset = st.number_input("Inseticidas (R$/ha)", 0.0, value=ref("inseticida", 120.0), step=10.0)
+    fung = st.number_input("Fungicidas (R$/ha)", 0.0, value=ref("fungicida", 300.0), step=10.0)
     outros_def = st.number_input("Outros (acaricida, adjuvante, tratamento de semente...) (R$/ha)",
-                                 0.0, value=60.0, step=10.0)
+                                 0.0, value=ref("outros_defensivos", 60.0), step=10.0)
     custo_def = herb + inset + fung + outros_def
 
 with sb.expander("🚜 Máquinas", expanded=False):
     st.markdown("**Plantadeira**")
     maq_plant = bloco_maquina("Plantadeira", "plant", area,
-                              {"aluguel": 120.0, "valor": 400000.0, "vida": 10, "oper": 60.0})
+                              {"aluguel": ref("aluguel_plantadeira", 120.0), "valor": 400000.0, "vida": 10, "oper": 60.0})
     st.markdown("**Pulverizador**")
     maq_pulv = bloco_maquina("Pulverizador", "pulv", area,
-                             {"aluguel": 40.0, "valor": 600000.0, "vida": 10, "oper": 25.0})
+                             {"aluguel": ref("aluguel_pulverizador", 40.0), "valor": 600000.0, "vida": 10, "oper": 25.0})
     st.markdown("**Colhedora**")
     maq_colh = bloco_maquina("Colhedora", "colh", area,
-                             {"aluguel": 330.0, "valor": 1500000.0, "vida": 12, "oper": 120.0})
+                             {"aluguel": ref("aluguel_colhedora", 330.0), "valor": 1500000.0, "vida": 12, "oper": 120.0})
     custo_maq = maq_plant + maq_pulv + maq_colh
 
 with sb.expander("🪨 Preparo do solo", expanded=False):
-    dessec = st.number_input("Dessecação / manejo pré-plantio (R$/ha)", 0.0, value=60.0, step=5.0)
+    dessec = st.number_input("Dessecação / manejo pré-plantio (R$/ha)", 0.0, value=ref("dessecacao", 60.0), step=5.0)
     operacoes = st.number_input("Operações de preparo (aração, gradagem, subsolagem) (R$/ha)",
                                 0.0, value=0.0, step=10.0,
                                 help="Em plantio direto pode ficar em zero.")
     custo_solo = dessec + operacoes
 
 with sb.expander("💰 Outros custos", expanded=False):
-    mao = st.number_input("Mão de obra (R$/ha)", 0.0, value=60.0, step=5.0)
-    transp = st.number_input("Frete, armazenagem e secagem (R$/ha)", 0.0, value=120.0, step=5.0)
-    seguro = st.number_input("Seguro, assistência técnica e impostos (R$/ha)", 0.0, value=150.0, step=5.0)
+    mao = st.number_input("Mão de obra (R$/ha)", 0.0, value=ref("mao_de_obra", 60.0), step=5.0)
+    transp = st.number_input("Frete, armazenagem e secagem (R$/ha)", 0.0, value=ref("frete_armazenagem", 120.0), step=5.0)
+    seguro = st.number_input("Seguro, assistência técnica e impostos (R$/ha)", 0.0, value=ref("seguro_assist_imp", 150.0), step=5.0)
     admin = st.number_input("Arrendamento e administração (R$/ha)", 0.0, value=0.0, step=10.0)
     custo_outros = mao + transp + seguro + admin
+
+with sb.expander("⚠️ Risco e câmbio", expanded=False):
+    cv = st.number_input("Variação da produtividade entre safras (CV, %)", 0.0, 60.0,
+                         ref("cv_produtividade_pct", 15.0), step=1.0,
+                         help="Coeficiente de variação = desvio padrão ÷ média das safras da sua região. "
+                              "Ideal: calcular com a série histórica do IBGE (PAM) do seu município.")
+    parte_dolar = st.number_input("Parte do custo ligada ao dólar (%)", 0.0, 100.0, 60.0, step=5.0,
+                                  help="Adubo, defensivos e parte da semente e das máquinas "
+                                       "costumam acompanhar o câmbio. Valor de exemplo.")
 
 # ---------------- preço da soja ----------------
 with sb.expander("🌾 Preço da soja", expanded=True):
@@ -199,11 +227,13 @@ def card(col, titulo, valor, sub=""):
                  unsafe_allow_html=True)
 
 
-k = st.columns(4)
+k = st.columns(5)
 card(k[0], "Custo total", reais(custo_ha) + "/ha", f"{reais(custo_ha * area)} na área")
 card(k[1], "Ponto de equilíbrio", f"{num(pe)} sc/ha", f"produtividade esperada: {num(prod)} sc/ha")
 card(k[2], "Custo por saca", reais(cps), f"preço: {reais(preco)}")
-card(k[3], "Margem", reais(margem) + "/ha", f"{reais(margem * area)} na área")
+card(k[3], "Preço de equilíbrio", reais(c.preco_equilibrio(custo_ha, prod)) + "/sc",
+     f"com {num(prod)} sc/ha")
+card(k[4], "Margem", reais(margem) + "/ha", f"{reais(margem * area)} na área")
 
 # ---------------- gráfico do ponto de equilíbrio ----------------
 st.subheader("Gráfico do ponto de equilíbrio")
@@ -232,6 +262,54 @@ st.altair_chart((linhas_chart + regra + marca_pe + txt_pe + marca_pr + txt_pr)
                 .properties(height=360).configure_view(strokeWidth=0), use_container_width=True)
 st.caption("Onde a linha verde (receita) cruza a vermelha (custo) é o ponto de equilíbrio: "
            "abaixo dessa produtividade, há prejuízo.")
+
+# ---------------- mapa de calor produtividade x preço ----------------
+st.subheader("Lucro ou prejuízo: produtividade × preço")
+passos_prod = [prod * f for f in (0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2)]
+passos_preco = [preco * f for f in (0.8, 0.9, 1.0, 1.1, 1.2)]
+mapa = pd.DataFrame([
+    {"Produtividade (sc/ha)": f"{p:.0f}", "Preço (R$/sc)": f"{q:.0f}",
+     "Margem (R$/ha)": p * q - custo_ha, "_p": p, "_q": q}
+    for p in passos_prod for q in passos_preco])
+ordem_p = [f"{p:.0f}" for p in passos_prod]
+ordem_q = [f"{q:.0f}" for q in reversed(passos_preco)]
+teto = max(abs(mapa["Margem (R$/ha)"]).max(), 1)
+base = alt.Chart(mapa).encode(
+    x=alt.X("Produtividade (sc/ha):N", sort=ordem_p),
+    y=alt.Y("Preço (R$/sc):N", sort=ordem_q))
+calor = base.mark_rect().encode(
+    color=alt.Color("Margem (R$/ha):Q", scale=alt.Scale(domain=[-teto, 0, teto],
+                    range=[VERMELHO, "#2a3a30", VERDE]), legend=None),
+    tooltip=["Produtividade (sc/ha)", "Preço (R$/sc)", alt.Tooltip("Margem (R$/ha):Q", format=",.0f")])
+numeros = base.mark_text(color="white", fontSize=11).encode(
+    text=alt.Text("Margem (R$/ha):Q", format=",.0f"))
+st.altair_chart((calor + numeros).properties(height=260), use_container_width=True)
+st.caption("Margem em R$/ha. Verde = lucro, vermelho = prejuízo. A coluna central e a linha "
+           "central são os seus valores atuais.")
+
+# ---------------- risco ----------------
+st.subheader("Risco da safra")
+p_abaixo = c.prob_abaixo_do_equilibrio(prod, cv, pe)
+p10 = c.produtividade_percentil(prod, cv, 10)
+p90 = c.produtividade_percentil(prod, cv, 90)
+r = st.columns(3)
+card(r[0], "Chance de ficar abaixo do equilíbrio", f"{num(p_abaixo)}%",
+     f"com variação de {num(cv)}% entre safras")
+card(r[1], "Safra ruim (1 a cada 10)", f"{num(p10)} sc/ha",
+     f"margem: {reais(c.margem_por_ha(c.receita_por_ha(p10, preco), custo_ha))}/ha")
+card(r[2], "Safra boa (1 a cada 10)", f"{num(p90)} sc/ha",
+     f"margem: {reais(c.margem_por_ha(c.receita_por_ha(p90, preco), custo_ha))}/ha")
+st.caption("Cálculo simplificado com distribuição normal. O CV padrão é um valor de exemplo: "
+           "o ideal é usar a série histórica de produtividade do seu município.")
+
+st.markdown("**E se o dólar mudar?** (afeta só a parte do custo ligada ao dólar; preço da soja mantido)")
+linhas_cambio = []
+for v in (-10, 0, 10, 20, 30):
+    cc = c.custo_com_cambio(custo_ha, parte_dolar, v)
+    linhas_cambio.append({"Dólar": f"{v:+d}%", "Custo (R$/ha)": round(cc, 2),
+                          "Ponto de equilíbrio (sc/ha)": round(c.ponto_equilibrio(cc, preco), 1),
+                          "Margem (R$/ha)": round(receita - cc, 2)})
+st.dataframe(pd.DataFrame(linhas_cambio), hide_index=True, use_container_width=True)
 
 # ---------------- composição e sensibilidade ----------------
 col_a, col_b = st.columns(2)
@@ -278,10 +356,13 @@ with st.expander("📐 Como cada número é calculado"):
   + juros sobre o capital médio ÷ ha/ano + operação. **Alugada** = valor pago por hectare.
 - **Preço da saca (tempo real)** = US¢/bushel ÷ 100 × (60 ÷ 27,2155) × dólar + ajuste da praça
 - **Ponto de equilíbrio (sc/ha)** = custo total/ha ÷ preço da saca → {num(pe)} sc/ha
+- **Preço de equilíbrio** = custo total/ha ÷ produtividade esperada → {reais(c.preco_equilibrio(custo_ha, prod))}/sc
+- **Chance abaixo do equilíbrio** = probabilidade de a safra render menos que o equilíbrio, supondo
+  distribuição normal com desvio = CV × produtividade → {num(p_abaixo)}%
 - **Folga** = (produtividade − equilíbrio) ÷ produtividade → {num(folga)}%
 - **Veredito**: ≥ {MARGEM_SEGURANCA}% vale a pena · 0 a {MARGEM_SEGURANCA}% no limite · abaixo de 0 não vale
   (os {MARGEM_SEGURANCA}% são um valor de exemplo).
 
-Os valores iniciais dos campos são exemplos, não preços oficiais: troque pelos da sua propriedade.
+Os valores iniciais vêm do arquivo `custos_referencia.json` (exemplos, não oficiais): troque pelos da sua propriedade e registre a fonte.
 A cotação ao vivo é de **Chicago**, não da sua praça; use o campo de prêmio/desconto para aproximar.
 """)

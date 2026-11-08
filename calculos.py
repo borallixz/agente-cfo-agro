@@ -70,3 +70,34 @@ def preco_saca_da_bolsa(centavos_por_bushel, dolar_em_reais):
     dolares_por_bushel = centavos_por_bushel / 100
     bushels_por_saca = KG_POR_SACA / KG_POR_BUSHEL_SOJA
     return dolares_por_bushel * bushels_por_saca * dolar_em_reais
+
+
+# ---------- preço de equilíbrio, risco e câmbio ----------
+def preco_equilibrio(custo_ha, produtividade_sc_ha):
+    # preço mínimo da saca para empatar com a produtividade esperada
+    return custo_ha / produtividade_sc_ha
+
+
+def distribuicao_produtividade(media_sc_ha, cv_pct):
+    # desvio padrão a partir do coeficiente de variação (CV = desvio / média)
+    from statistics import NormalDist
+    return NormalDist(media_sc_ha, media_sc_ha * cv_pct / 100)
+
+
+def prob_abaixo_do_equilibrio(media_sc_ha, cv_pct, ponto_eq):
+    # chance de a safra render menos que o ponto de equilíbrio (distribuição normal)
+    if cv_pct <= 0:
+        return 100.0 if media_sc_ha < ponto_eq else 0.0
+    return distribuicao_produtividade(media_sc_ha, cv_pct).cdf(ponto_eq) * 100
+
+
+def produtividade_percentil(media_sc_ha, cv_pct, percentil):
+    # ex.: percentil 10 = produtividade que só é superada em 90% das safras
+    if cv_pct <= 0:
+        return media_sc_ha
+    return max(0.0, distribuicao_produtividade(media_sc_ha, cv_pct).inv_cdf(percentil / 100))
+
+
+def custo_com_cambio(custo_ha, parte_em_dolar_pct, variacao_dolar_pct):
+    # parte do custo (adubo, defensivos, semente...) acompanha o dólar
+    return custo_ha * (1 + parte_em_dolar_pct / 100 * variacao_dolar_pct / 100)

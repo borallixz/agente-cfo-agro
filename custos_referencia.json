@@ -1,0 +1,18 @@
+{
+  "_aviso": "Valores de EXEMPLO do desenvolvedor, não oficiais. Troque por dados da Conab, Deral/SEAB, Embrapa ou da sua cooperativa e atualize 'fonte' e 'data'.",
+  "preco_saco_semente":  {"valor": 480.0,  "fonte": "estimativa do desenvolvedor", "data": "2026-11"},
+  "adubo_kg_ha":         {"valor": 350.0,  "fonte": "estimativa do desenvolvedor", "data": "2026-11"},
+  "adubo_preco_t":       {"valor": 3200.0, "fonte": "estimativa do desenvolvedor", "data": "2026-11"},
+  "herbicida":           {"valor": 180.0,  "fonte": "estimativa do desenvolvedor", "data": "2026-11"},
+  "inseticida":          {"valor": 120.0,  "fonte": "estimativa do desenvolvedor", "data": "2026-11"},
+  "fungicida":           {"valor": 300.0,  "fonte": "estimativa do desenvolvedor", "data": "2026-11"},
+  "outros_defensivos":   {"valor": 60.0,   "fonte": "estimativa do desenvolvedor", "data": "2026-11"},
+  "dessecacao":          {"valor": 60.0,   "fonte": "estimativa do desenvolvedor", "data": "2026-11"},
+  "mao_de_obra":         {"valor": 60.0,   "fonte": "estimativa do desenvolvedor", "data": "2026-11"},
+  "frete_armazenagem":   {"valor": 120.0,  "fonte": "estimativa do desenvolvedor", "data": "2026-11"},
+  "seguro_assist_imp":   {"valor": 150.0,  "fonte": "estimativa do desenvolvedor", "data": "2026-11"},
+  "aluguel_plantadeira": {"valor": 120.0,  "fonte": "estimativa do desenvolvedor", "data": "2026-11"},
+  "aluguel_pulverizador":{"valor": 40.0,   "fonte": "estimativa do desenvolvedor", "data": "2026-11"},
+  "aluguel_colhedora":   {"valor": 330.0,  "fonte": "estimativa do desenvolvedor", "data": "2026-11"},
+  "cv_produtividade_pct":{"valor": 15.0,   "fonte": "estimativa do desenvolvedor; substituir pela série do IBGE (PAM) do seu município", "data": "2026-11"}
+}
