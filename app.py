@@ -47,6 +47,30 @@ def _carregar_referencia():
 
 
 REF = _carregar_referencia()
+PASTA_DADOS = Path(__file__).parent / "dados"
+
+
+def _ler_csv(nome):
+    try:
+        return pd.read_csv(PASTA_DADOS / nome)
+    except Exception:
+        return None
+
+
+PROD_PR = _ler_csv("produtividade_soja_pr.csv")      # Conab, série histórica, Paraná
+CEPEA_PR = _ler_csv("cepea_parana_mensal.csv")       # Cepea/Esalq, Paraná, R$/saca
+
+
+def _cv_historico(inicio=2015, fim=2024):
+    """Coeficiente de variação (%) da produtividade do PR nas safras inicio/..–fim/.."""
+    if PROD_PR is None:
+        return None
+    ano = PROD_PR["safra"].str[:4].astype(int)
+    y = PROD_PR[(ano >= inicio) & (ano <= fim)]["produtividade_kg_ha"]
+    return float(y.std(ddof=1) / y.mean() * 100) if len(y) > 2 else None
+
+
+CV_HIST = _cv_historico()
 
 
 def ref(chave, padrao):
@@ -96,7 +120,7 @@ st.markdown('<div class="cfo-hero"><h1>🌱 Agente CFO do Agro</h1>'
 sb = st.sidebar
 sb.header("Dados da lavoura")
 area = sb.number_input("Área (ha)", 1.0, value=100.0, step=10.0)
-prod = sb.number_input("Produtividade esperada (sc/ha)", 1.0, value=60.0, step=1.0)
+prod = sb.number_input("Produtividade esperada (sc/ha)", 1.0, value=ref("produtividade_sc_ha", 60.0), step=0.5)
 
 with sb.expander("🌱 Semente", expanded=False):
     pop = st.number_input("População desejada (plantas/ha)", 100000, 600000, 280000, step=10000)
@@ -136,7 +160,7 @@ with sb.expander("🚜 Máquinas", expanded=False):
                              {"aluguel": ref("aluguel_colhedora", 330.0), "valor": 1500000.0, "vida": 12, "oper": 120.0})
     custo_maq = maq_plant + maq_pulv + maq_colh
 
-with sb.expander("🪨 Preparo do solo", expanded=False):
+with sb.expander("⛏️ Preparo do solo", expanded=False):
     dessec = st.number_input("Dessecação / manejo pré-plantio (R$/ha)", 0.0, value=ref("dessecacao", 60.0), step=5.0)
     operacoes = st.number_input("Operações de preparo (aração, gradagem, subsolagem) (R$/ha)",
                                 0.0, value=0.0, step=10.0,
@@ -147,14 +171,19 @@ with sb.expander("💰 Outros custos", expanded=False):
     mao = st.number_input("Mão de obra (R$/ha)", 0.0, value=ref("mao_de_obra", 60.0), step=5.0)
     transp = st.number_input("Frete, armazenagem e secagem (R$/ha)", 0.0, value=ref("frete_armazenagem", 120.0), step=5.0)
     seguro = st.number_input("Seguro, assistência técnica e impostos (R$/ha)", 0.0, value=ref("seguro_assist_imp", 150.0), step=5.0)
-    admin = st.number_input("Arrendamento e administração (R$/ha)", 0.0, value=0.0, step=10.0)
-    custo_outros = mao + transp + seguro + admin
+    admin = st.number_input("Arrendamento e administração (R$/ha)", 0.0,
+                            value=ref("admin_arrendamento", 0.0), step=10.0)
+    juros_fin = st.number_input("Juros do financiamento (R$/ha)", 0.0,
+                                value=ref("juros_financiamento", 0.0), step=10.0)
+    benf = st.number_input("Benfeitorias: depreciação e manutenção (R$/ha)", 0.0,
+                           value=ref("benfeitorias", 0.0), step=10.0)
+    custo_outros = mao + transp + seguro + admin + juros_fin + benf
 
 with sb.expander("⚠️ Risco e câmbio", expanded=False):
     cv = st.number_input("Variação da produtividade entre safras (CV, %)", 0.0, 60.0,
-                         ref("cv_produtividade_pct", 15.0), step=1.0,
-                         help="Coeficiente de variação = desvio padrão ÷ média das safras da sua região. "
-                              "Ideal: calcular com a série histórica do IBGE (PAM) do seu município.")
+                         round(CV_HIST, 1) if CV_HIST else 15.0, step=1.0,
+                         help="Coeficiente de variação = desvio padrão ÷ média das safras. O valor inicial é o do "
+                              "Paraná nas safras 2015/16 a 2024/25 (série histórica da Conab).")
     parte_dolar = st.number_input("Parte do custo ligada ao dólar (%)", 0.0, 100.0, 60.0, step=5.0,
                                   help="Adubo, defensivos e parte da semente e das máquinas "
                                        "costumam acompanhar o câmbio. Valor de exemplo.")
@@ -163,7 +192,7 @@ with sb.expander("⚠️ Risco e câmbio", expanded=False):
 with sb.expander("🌾 Preço da soja", expanded=True):
     ao_vivo = st.toggle("Usar cotação em tempo real", value=True)
     cot = cotacao_ao_vivo() if ao_vivo else None
-    preco_manual = st.number_input("Preço manual da saca (R$)", 0.0, value=130.0, step=1.0)
+    preco_manual = st.number_input("Preço manual da saca (R$)", 0.0, value=ref("preco_manual_saca", 130.0), step=1.0)
     ajuste = st.number_input("Prêmio/desconto da sua praça (R$/saca)", value=-15.0, step=1.0,
                              help="Chicago não é o preço da sua cidade. Use o prêmio/desconto para "
                                   "aproximar do preço pago na sua região (frete, porto, câmbio).")
@@ -365,4 +394,70 @@ with st.expander("📐 Como cada número é calculado"):
 
 Os valores iniciais vêm do arquivo `custos_referencia.json` (exemplos, não oficiais): troque pelos da sua propriedade e registre a fonte.
 A cotação ao vivo é de **Chicago**, não da sua praça; use o campo de prêmio/desconto para aproximar.
+""")
+
+
+# ---------------- comparação com a Conab ----------------
+CONAB = REF.get("conab_londrina_2026_27")
+if CONAB:
+    with st.expander("📊 Comparar com a Conab (Londrina-PR, safra 2026/27)"):
+        cg = CONAB["grupos_rs_ha"]
+        comp_conab = pd.DataFrame({
+            "Grupo": list(grupos),
+            "Seu app (R$/ha)": [round(v, 2) for v in grupos.values()],
+            "Conab (R$/ha)": [cg.get(g, 0.0) for g in grupos],
+        })
+        comp_conab["Diferença (R$/ha)"] = (comp_conab["Seu app (R$/ha)"]
+                                            - comp_conab["Conab (R$/ha)"]).round(2)
+        st.dataframe(comp_conab, hide_index=True, use_container_width=True)
+        pe_conab_co = CONAB["custo_operacional_rs_saca"]
+        pe_conab_ct = CONAB["custo_total_rs_saca"]
+        st.markdown(
+            f"- Custo operacional da Conab: **{reais(CONAB['custo_operacional_rs_ha'])}/ha** "
+            f"({reais(pe_conab_co)}/saca). Custo total: **{reais(CONAB['custo_total_rs_ha'])}/ha** "
+            f"({reais(pe_conab_ct)}/saca), com produtividade de "
+            f"{num(CONAB['produtividade_kg_ha'])} kg/ha ({num(CONAB['produtividade_kg_ha'] / 60)} sc/ha).\n"
+            f"- Seu app: **{reais(custo_ha)}/ha** e **{reais(cps)}/saca**.\n"
+            f"- Preço usado agora: **{reais(preco)}/saca**. Cobre o custo operacional da Conab: "
+            f"**{'sim' if preco >= pe_conab_co else 'não'}**. Cobre o custo total: "
+            f"**{'sim' if preco >= pe_conab_ct else 'não'}**.")
+        st.caption(f"Fonte: {CONAB['fonte']}. Referência: {CONAB['referencia']} (relatório do tipo estimado). "
+                   f"Máquinas = {CONAB['nota_maquinas']}. Outros = {CONAB['nota_outros']}. "
+                   f"{CONAB['nota_custo_total'].capitalize()}.")
+
+# ---------------- dados históricos ----------------
+if PROD_PR is not None or CEPEA_PR is not None:
+    with st.expander("📈 Dados históricos de referência"):
+        if PROD_PR is not None:
+            st.markdown("**Produtividade da soja no Paraná (Conab, kg/ha)**")
+            h = PROD_PR[PROD_PR["safra"].str[:4].astype(int) >= 2000].copy()
+            h["sc/ha"] = (h["produtividade_kg_ha"] / 60).round(1)
+            graf_h = alt.Chart(h).mark_line(point=True, color=VERDE).encode(
+                x=alt.X("safra:N", title=None, axis=alt.Axis(labelAngle=-60)),
+                y=alt.Y("sc/ha:Q", title="sc/ha", scale=alt.Scale(zero=False)),
+                tooltip=["safra", "sc/ha", "produtividade_kg_ha", "situacao"])
+            st.altair_chart(graf_h.properties(height=260), use_container_width=True)
+            if CV_HIST:
+                st.caption(f"Variação (CV) de 2015/16 a 2024/25: {num(CV_HIST)}%. "
+                           "A safra 2021/22 (seca) ficou em 38,7 sc/ha. "
+                           "2026/27 é previsão da Conab (out/2026).")
+        if CEPEA_PR is not None:
+            st.markdown("**Indicador Cepea/Esalq, soja Paraná (R$/saca, média mensal à vista)**")
+            p = CEPEA_PR.copy()
+            p["data"] = pd.to_datetime(dict(year=p["ano"], month=p["mes"], day=1))
+            graf_p = alt.Chart(p).mark_line(color=AMARELO).encode(
+                x=alt.X("data:T", title=None), y=alt.Y("reais_saca:Q", title="R$/saca"),
+                tooltip=[alt.Tooltip("data:T", format="%m/%Y"), "reais_saca"])
+            st.altair_chart(graf_p.properties(height=240), use_container_width=True)
+            ult = p.iloc[-1]
+            st.caption(f"Série baixada vai de 01/2016 a {int(ult['mes']):02d}/{int(ult['ano'])} "
+                       f"(último valor: {reais(ult['reais_saca'])}). Preço descontado do prazo de pagamento "
+                       "pela taxa NPR. Não inclui os meses mais recentes.")
+
+with st.expander("📚 Fontes dos dados"):
+    st.markdown("""
+- **Custos de produção:** Conab, Custo de Produção, série histórica 1997–2026 (Londrina-PR, soja plantio direto, alta tecnologia, OGM, safra 2026/27, estimado, março/2026).
+- **Produtividade e previsão de safra:** Conab, série histórica de safras de soja e 1º levantamento da safra 2026/27 (outubro/2026).
+- **Preço histórico:** Cepea/Esalq, Indicador da Soja Paraná (R$/saca de 60 kg, à vista).
+- **Preço ao vivo:** Chicago (ZS=F) e dólar, convertidos para R$/saca; não é preço da sua praça.
 """)
